@@ -6,7 +6,10 @@
 #include <unistd.h>
 
 int main(int argc, char** argv) {
-    int sockfd = socket(AF_INET, SOCK_DGRAM, 0); //notice second parameter is different thatn TCP
+    int WINDOW_SIZE = 5; // we can handle 5 packets at a time
+    int HEADER_SIZE = 1; // need 1 byte for identifying packets
+    int PACKET_SIZE = 1024; // we can send a max of 1024 bytes (excluding headers)
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if(sockfd < 0) {
         printf("There was an ERROR(1) creating the socket\n");
         return 1;
@@ -30,8 +33,9 @@ int main(int argc, char** argv) {
 
     uint len = sizeof(serveraddr);
 
-    char file_name[200];
-    char buffer[1024];
+    char file_name[PACKET_SIZE];
+    char buffer[PACKET_SIZE + HEADER_SIZE];
+    //char result[100000]; // 100,000 bytes (100 kb) for testing purposes
     char *newline;
 
     printf("Enter a file name:\n");
@@ -44,12 +48,23 @@ int main(int argc, char** argv) {
         *newline = '\0';
     }
 
-    sendto(sockfd, file_name, strlen(file_name)+1, 0, (struct sockaddr*)&serveraddr, len); //we use sendto in UDP
-    if (recvfrom(sockfd, buffer, 1024, 0, (struct sockaddr*)&serveraddr, &len) < 0) {
-        printf("Error while retrieving message.\n");
-    } else {
-        printf("Received from server: %s\n", buffer);
+    sendto(sockfd, file_name, strlen(file_name)+1, 0, (struct sockaddr*)&serveraddr, len);
+    while (1) {
+        if (recvfrom(sockfd, buffer, PACKET_SIZE + HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, &len) < 0) {
+            printf("Error while retrieving message.\n");
+            break;
+        } else {
+            printf("****************************\n%s\n", buffer);
+            // send acknowledgement (need to do error checking before this)
+            //sendto(sockfd, buffer, HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, len); // send the first 3 bytes of the buffer
+            if ((*buffer) == (char)('A'+(2*WINDOW_SIZE)+1)) {
+                // the header indicates this is the last packet
+                break;
+            }
+        }
+        memset(buffer, 0, PACKET_SIZE+HEADER_SIZE);
     }
+    
     close(sockfd);
 
 }
