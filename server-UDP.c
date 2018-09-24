@@ -10,7 +10,7 @@
 int WINDOW_SIZE = 5; // we can handle 5 packets at a time
 int HEADER_SIZE = 1; // need 3 bytes for identifying packets
 int PACKET_SIZE = 1024; // we can send a max of 1024 bytes (excluding headers)
-
+int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_length, int sockfd, struct sockaddr_in clientaddr, uint len);
 int main(int argc, char** argv) {
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if(sockfd < 0) {
@@ -47,14 +47,14 @@ int main(int argc, char** argv) {
 
     while(1){
         uint len = sizeof(clientaddr);
-        char file_name[PACKET_SIZE];
-        int n = recvfrom(sockfd, file_name, PACKET_SIZE, 0, (struct sockaddr*)&clientaddr, &len);
+        char client_response[PACKET_SIZE];
+        int n = recvfrom(sockfd, client_response, PACKET_SIZE, 0, (struct sockaddr*)&clientaddr, &len);
 
         if(n < 0)
             printf("Time out on recieve.\n"); 
         else {
-            printf("Got from client: %s\n", file_name);
-            FILE * in = fopen (file_name, "r");
+            printf("Got from client: %s\n", client_response);
+            FILE * in = fopen (client_response, "r");
             if (in == NULL) {
                 char error_line[] = "Error: File not found";
                 printf("%s\n", error_line);
@@ -70,45 +70,57 @@ int main(int argc, char** argv) {
             int current_packet = 0;
 
 
-            while (1) {
-                *(read_buffer) = (char)('A'+pack_ID); // add the identifier to the beginning of the line
-                // this identifier will be a char, starting at A, and ending at A + WINDOW_SIZE*2
-                // this will end up being, in the case of the window size being 5, A through J
-                
-                int diff = file_length - ftell(in);
-                int actual_packet_size = PACKET_SIZE;
-                if (diff == 0)
-                    break; // we have reached the end of the file
-                if (diff < PACKET_SIZE) {
-                    fread(read_buffer+1, sizeof(char), diff, in);
-                    // we have less than PACKET_SIZE bytes left in the file, so only
-                    // read diff number of bytes of the file into the read_buffer.
-                    // 
-                    // this will seek to the end of the file, so let the client
-                    // know this is the last packet by putting what we can consider
-                    // an EOF byte at the end
-                    *(read_buffer) = (char)('A'+(2*WINDOW_SIZE)+1);
-                    actual_packet_size = diff+1;
-                } else {
-                    fread(read_buffer+1, sizeof(char), PACKET_SIZE, in);
-                    // read PACKET_SIZE bytes of the file into the read_buffer
-
-                }
-                
-                printf("%s -> %d, %d\n", "packet ID: ", pack_ID, actual_packet_size);
-
-                pack_ID++;
-                if (pack_ID >= 2 * WINDOW_SIZE)
-                    pack_ID = 0;
-                
-                if (sendto(sockfd, read_buffer, actual_packet_size, 0, (struct sockaddr*)&clientaddr, len) < 0) {
-                    printf("sendto failed\n");
-                    break;
-                    // need to do error handling here, in the future
-                }
-                
+            for (; current_packet < 5; current_packet++) {
+                sendNextPacket(read_buffer, in, &pack_ID, file_length, sockfd, clientaddr, len);
             }
-            //free(read_buffer);
+            while (1) {
+                if (recvfrom(sockfd, client_response, PACKET_SIZE, 0, (struct sockaddr*)&clientaddr, &len) < 0) {
+                    break;
+                    // TODO: change the timeout to a small value, if the timeout occurs there has been an error
+                    // and we need to re-send the packet
+                }
+                // in the future we need to check if client_response[0] == packet number we want
+                sendNextPacket(read_buffer, in, &pack_ID, file_length, sockfd, clientaddr, len);
+            }
         }
     }
+}
+
+int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_length, int sockfd, struct sockaddr_in clientaddr, uint len) {
+    *(read_buffer) = (char)('A'+(*pack_ID)); // add the identifier to the beginning of the packet
+    // this identifier will be a char, starting at A, and ending at A + WINDOW_SIZE*2
+    // this will end up being, in the case of the window size being 5, A through J
+    
+    int diff = file_length - ftell(file_ptr); // amount of data we have left
+    int actual_packet_size = PACKET_SIZE;
+    if (diff == 0)
+        return 1; // we have reached the end of the file
+    if (diff <= PACKET_SIZE) {
+        fread(read_buffer+1, sizeof(char), diff, file_ptr);
+        // we have less than PACKET_SIZE bytes left in the file, so only
+        // read 'diff' number of bytes of the file into the read_buffer.
+        // 
+        // this will seek to the end of the file, so let the client
+        // know this is the last packet by putting what we can consider
+        // an EOF byte at the beginning
+        *(read_buffer) = (char)('A'+(2*WINDOW_SIZE)+1);
+        actual_packet_size = diff+1;
+    } else {
+        fread(read_buffer+1, sizeof(char), PACKET_SIZE, file_ptr);
+        // read PACKET_SIZE bytes of the file into the read_buffer
+
+    }
+    
+    printf("%s -> %d, %d\n", "packet ID: ", *pack_ID, actual_packet_size);
+
+    *pack_ID = (*pack_ID) + 1;
+    if (*pack_ID >= 2 * WINDOW_SIZE)
+        *pack_ID = 0;
+    
+    if (sendto(sockfd, read_buffer, actual_packet_size, 0, (struct sockaddr*)&clientaddr, len) < 0) {
+        printf("sendto failed\n");
+        return 2;
+        // need to do error handling here, in the future
+    }
+    return 0;
 }

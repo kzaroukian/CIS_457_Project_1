@@ -34,11 +34,12 @@ int main(int argc, char** argv) {
     uint len = sizeof(serveraddr);
 
     char file_name[PACKET_SIZE];
+    char file_write_name[PACKET_SIZE];
     char buffer[PACKET_SIZE + HEADER_SIZE];
-    //char result[100000]; // 100,000 bytes (100 kb) for testing purposes
+
     char *newline;
 
-    printf("Enter a file name:\n");
+    printf("Enter a file name to get:\n");
     if (fgets(file_name, sizeof(file_name), stdin) == NULL) {
         return -1; // Input error / EOF
     }
@@ -48,21 +49,46 @@ int main(int argc, char** argv) {
         *newline = '\0';
     }
 
+    printf("Enter a file name to create:\n");
+    if (fgets(file_write_name, sizeof(file_write_name), stdin) == NULL) {
+        return -1; // Input error / EOF
+    }
+    newline = strchr(file_write_name, '\n');
+    if (newline) {
+        // if a newline is present, we change the last char to NULL
+        *newline = '\0';
+    }
+
+    // create our output file
+    FILE *file_out = fopen(file_write_name, "w");
+
     sendto(sockfd, file_name, strlen(file_name)+1, 0, (struct sockaddr*)&serveraddr, len);
+    
     while (1) {
         if (recvfrom(sockfd, buffer, PACKET_SIZE + HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, &len) < 0) {
             printf("Error while retrieving message.\n");
             break;
         } else {
-            printf("****************************\n%s\n", buffer);
             // send acknowledgement (need to do error checking before this)
-            //sendto(sockfd, buffer, HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, len); // send the first 3 bytes of the buffer
+            sendto(sockfd, buffer, HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, len); // send the first byte of the buffer
+
+            //printf("****************************\n%s\n", buffer);
+            
+            // write to a file
+            fprintf(file_out, "%s", buffer+1);
+
             if ((*buffer) == (char)('A'+(2*WINDOW_SIZE)+1)) {
                 // the header indicates this is the last packet
+
+                // we really can't just break out, since we need to do some final error checking
+                // but we can do this temporarily
                 break;
             }
         }
         memset(buffer, 0, PACKET_SIZE+HEADER_SIZE);
+        // need to find a way to avoid doing this but it is needed, otherwise if
+        // we send less than PACKET_SIZE bytes, the end of the buffer
+        // (which is old data) is written to the file
     }
     
     close(sockfd);
