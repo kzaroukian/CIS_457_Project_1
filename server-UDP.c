@@ -96,7 +96,7 @@ int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_le
     if (diff == 0)
         return 1; // we have reached the end of the file
     if (diff <= PACKET_SIZE) {
-        fread(read_buffer+1, sizeof(char), diff, file_ptr);
+        fread(read_buffer+1, 1, diff, file_ptr);
         // we have less than PACKET_SIZE bytes left in the file, so only
         // read 'diff' number of bytes of the file into the read_buffer.
         // 
@@ -117,7 +117,7 @@ int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_le
     if (*pack_ID >= 2 * WINDOW_SIZE)
         *pack_ID = 0;
     
-    if (sendto(sockfd, read_buffer, actual_packet_size, 0, (struct sockaddr*)&clientaddr, len) < 0) {
+    if (sendto(sockfd, read_buffer, actual_packet_size + HEADER_SIZE, 0, (struct sockaddr*)&clientaddr, len) < 0) {
         printf("sendto failed\n");
         return 2;
         // need to do error handling here, in the future

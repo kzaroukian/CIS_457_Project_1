@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
     FILE *file_out = fopen(file_write_name, "w");
 
     sendto(sockfd, file_name, strlen(file_name)+1, 0, (struct sockaddr*)&serveraddr, len);
-    
+
     while (1) {
         if (recvfrom(sockfd, buffer, PACKET_SIZE + HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, &len) < 0) {
             printf("Error while retrieving message.\n");
@@ -71,11 +71,9 @@ int main(int argc, char** argv) {
         } else {
             // send acknowledgement (need to do error checking before this)
             sendto(sockfd, buffer, HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, len); // send the first byte of the buffer
-
-            //printf("****************************\n%s\n", buffer);
             
             // write to a file
-            fprintf(file_out, "%s", buffer+1);
+            fwrite(buffer+1, 1, sizeof(buffer)-1, file_out);
 
             if ((*buffer) == (char)('A'+(2*WINDOW_SIZE)+1)) {
                 // the header indicates this is the last packet
