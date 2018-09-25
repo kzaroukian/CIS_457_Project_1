@@ -41,6 +41,7 @@ int main(int argc, char** argv) {
 
     printf("Enter a file name to get:\n");
     if (fgets(file_name, sizeof(file_name), stdin) == NULL) {
+        printf("Input error\n");
         return -1; // Input error / EOF
     }
     newline = strchr(file_name, '\n');
@@ -51,6 +52,7 @@ int main(int argc, char** argv) {
 
     printf("Enter a file name to create:\n");
     if (fgets(file_write_name, sizeof(file_write_name), stdin) == NULL) {
+        printf("Input error\n");
         return -1; // Input error / EOF
     }
     newline = strchr(file_write_name, '\n');
@@ -64,20 +66,44 @@ int main(int argc, char** argv) {
 
     sendto(sockfd, file_name, strlen(file_name)+1, 0, (struct sockaddr*)&serveraddr, len);
 
+    char lastAck = 'A'-1;
+    char stored_packet_data[PACKET_SIZE * 2 * WINDOW_SIZE];
+
     while (1) {
         if (recvfrom(sockfd, buffer, PACKET_SIZE + HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, &len) < 0) {
-            printf("Error while retrieving message.\n");
-            break;
+            printf("Error while retrieving packet\n");
+            //break;
         } else {
-            // send acknowledgement (need to do error checking before this)
-            sendto(sockfd, buffer, HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, len); // send the first byte of the buffer
+            if (*buffer == lastAck) {
+                // we have received the same packet twice in a row
+                sendto(sockfd, buffer, HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, len);
+
+            } else if (*buffer == lastAck+1 || ((*buffer == 'A') && (lastAck == 'A'+(2*WINDOW_SIZE)-1))) {
+                // we have received the next packet
+
+                lastAck = *buffer; // set our last acknowledgement to this packet
+                
+                // send acknowledgement (need to do error checking before this)
+                sendto(sockfd, buffer, HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, len); // send the first byte of the buffer
+            } else if (*buffer > lastAck+1 || ((*buffer > lastAck-(2*WINDOW_SIZE)) && (*buffer < lastAck))) {
+                // we have received a packet that we cannot ack yet
+                memcpy((stored_packet_data+((*buffer-'A') * PACKET_SIZE)), buffer+1, strlen(buffer)-1);
+                // this should copy the data from the buffer to the 'slot' of storage in the
+                // stored_packet_data string. Packet 'A' will be stored from 0->1024, 'B'
+                // from 1025->2049, packet 'Z' at ('Z' - 'A') * 1024
+
+            } else {
+                // we have received either a past packet or random data
+            }
+
             
             // write to a file
             fwrite(buffer+1, 1, sizeof(buffer)-1, file_out);
 
             if ((*buffer) == (char)('A'+(2*WINDOW_SIZE)+1)) {
+                printf("Received all packets\n");
                 // the header indicates this is the last packet
-
+                // 
                 // we really can't just break out, since we need to do some final error checking
                 // but we can do this temporarily
                 break;
@@ -85,7 +111,7 @@ int main(int argc, char** argv) {
         }
         memset(buffer, 0, PACKET_SIZE+HEADER_SIZE);
         // need to find a way to avoid doing this but it is needed, otherwise if
-        // we send less than PACKET_SIZE bytes, the end of the buffer
+        // we receive less than PACKET_SIZE bytes, the end of the buffer
         // (which is old data) is written to the file
     }
     

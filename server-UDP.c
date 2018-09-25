@@ -68,19 +68,44 @@ int main(int argc, char** argv) {
 
             int pack_ID = 0;
             int current_packet = 0;
+            char acks[WINDOW_SIZE*2];
+            int current_ack_needed = 0;
 
 
             for (; current_packet < 5; current_packet++) {
                 sendNextPacket(read_buffer, in, &pack_ID, file_length, sockfd, clientaddr, len);
             }
             while (1) {
+                if (acks[current_ack_needed] == '1') {
+                    // already have the ack, so send the next packet and continue
+                    acks[current_ack_needed] = '0';
+                    sendNextPacket(read_buffer, in, &pack_ID, file_length, sockfd, clientaddr, len);
+                    current_ack_needed++;
+                    continue;
+                }
                 if (recvfrom(sockfd, client_response, PACKET_SIZE, 0, (struct sockaddr*)&clientaddr, &len) < 0) {
+                    printf("Did not receive data from the client\n");
                     break;
                     // TODO: change the timeout to a small value, if the timeout occurs there has been an error
                     // and we need to re-send the packet
                 }
-                // in the future we need to check if client_response[0] == packet number we want
-                sendNextPacket(read_buffer, in, &pack_ID, file_length, sockfd, clientaddr, len);
+                printf("current_ack_needed: %d\n", current_ack_needed);
+                if (client_response[0] == 'A' + current_ack_needed) {
+                    // this is the packet that we need, so send the next packet
+                    sendNextPacket(read_buffer, in, &pack_ID, file_length, sockfd, clientaddr, len);
+                    acks[current_ack_needed] = '0';
+                    current_ack_needed++;
+                    if (current_ack_needed >= sizeof(acks)) {
+                        current_ack_needed = 0;
+                    }
+                } else {
+                    if (client_response[0] >= 'A' && client_response[0] <= 'A' + (2*WINDOW_SIZE)) {
+                        // we have not yet received the packet we need, so store this acknowledgement for later
+                        acks[client_response[0]-'A'] = '1';
+                    } else {
+                        // received a byte that is not in our window range
+                    }
+                }
             }
         }
     }
