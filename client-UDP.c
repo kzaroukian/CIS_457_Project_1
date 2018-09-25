@@ -20,11 +20,25 @@ int main(int argc, char** argv) {
     scanf("%s", ip_address);
     printf("\n");
 
+    int i = 0;
+    for (; i < strlen(ip_address); i++) {
+        if ((ip_address[i] < '0' || ip_address[i] > '9') && ip_address[i] != '.') {
+            printf("Error in IP address\n");
+            return 1;
+        }
+    }
+
+
     int port;
     printf("Enter a port: ");
     scanf("%d", &port);
     printf("\n");
     getchar();
+
+    if (port < 1024 || port > 65535) {
+        printf("Error in port\n");
+            return 1;
+    }
 
     struct sockaddr_in serveraddr;
     serveraddr.sin_family = AF_INET;
@@ -88,7 +102,7 @@ int main(int argc, char** argv) {
         // we send less than PACKET_SIZE bytes, the end of the buffer
         // (which is old data) is written to the file
     }
-    
+    fclose(file_out);
     close(sockfd);
 
 }

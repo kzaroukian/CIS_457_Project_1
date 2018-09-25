@@ -8,7 +8,7 @@
 
 
 int WINDOW_SIZE = 5; // we can handle 5 packets at a time
-int HEADER_SIZE = 1; // need 3 bytes for identifying packets
+int HEADER_SIZE = 1; // need 1 byte for identifying packets
 int PACKET_SIZE = 1024; // we can send a max of 1024 bytes (excluding headers)
 int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_length, int sockfd, struct sockaddr_in clientaddr, uint len);
 int main(int argc, char** argv) {
