@@ -77,9 +77,10 @@ int main(int argc, char** argv) {
     FILE *file_out = fopen(file_write_name, "w");
 
     sendto(sockfd, file_name, strlen(file_name)+1, 0, (struct sockaddr*)&serveraddr, len);
-
+    int size;
     while (1) {
-        if (recvfrom(sockfd, buffer, PACKET_SIZE + HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, &len) < 0) {
+        size = recvfrom(sockfd, buffer, PACKET_SIZE + HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, &len);
+        if (size < 0) {
             printf("Error while retrieving message.\n");
             break;
         } else {
@@ -87,7 +88,8 @@ int main(int argc, char** argv) {
             sendto(sockfd, buffer, HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, len); // send the first byte of the buffer
             
             // write to a file
-            fwrite(buffer+1, 1, sizeof(buffer)-1, file_out);
+            fwrite(buffer+1, 1, size-1, file_out);
+
 
             if ((*buffer) == (char)('A'+(2*WINDOW_SIZE)+1)) {
                 // the header indicates this is the last packet
@@ -97,10 +99,6 @@ int main(int argc, char** argv) {
                 break;
             }
         }
-        memset(buffer, 0, PACKET_SIZE+HEADER_SIZE);
-        // need to find a way to avoid doing this but it is needed, otherwise if
-        // we send less than PACKET_SIZE bytes, the end of the buffer
-        // (which is old data) is written to the file
     }
     fclose(file_out);
     close(sockfd);

@@ -104,7 +104,7 @@ int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_le
         // know this is the last packet by putting what we can consider
         // an EOF byte at the beginning
         *(read_buffer) = (char)('A'+(2*WINDOW_SIZE)+1);
-        actual_packet_size = diff+1;
+        actual_packet_size = diff;
     } else {
         fread(read_buffer+1, sizeof(char), PACKET_SIZE, file_ptr);
         // read PACKET_SIZE bytes of the file into the read_buffer
