@@ -55,7 +55,11 @@ int main(int argc, char** argv) {
 		int n = recvfrom(sockfd, client_response, PACKET_SIZE, 0, (struct sockaddr*)&clientaddr, &len);
 
 		if(n < 0)
+<<<<<<< HEAD
 			printf("Waiting...\n");
+=======
+			printf("Time out on recieve.\n");
+>>>>>>> 7963bb1697fa63800d44e8c0669186da819b0f8c
 		else {
 			printf("Filename received: %s\n", client_response);
 			sendto(sockfd, client_response, n, 0, (struct sockaddr*)&clientaddr, len);
@@ -98,6 +102,7 @@ int main(int argc, char** argv) {
 
 
 			while (1) {
+<<<<<<< HEAD
 				int window_min = (current_ack_needed + 1) % (2*WINDOW_SIZE);
             	int window_max = ((window_min + WINDOW_SIZE) - 1) % (2*WINDOW_SIZE);
 
@@ -113,6 +118,18 @@ int main(int argc, char** argv) {
 
 				if ((client_response[0] == 'A'+last_ack_needed && strcmp(client_response+1, END_OF_FILE) == 0)
 					|| (last_ack_needed >= 0 && acks[last_ack_needed] == '1')) {
+=======
+				int window_min = (current_ack_needed - 'A' + 1) % (2*WINDOW_SIZE);
+            	int window_max = (window_min+WINDOW_SIZE-1) % (2*WINDOW_SIZE);
+
+				if (last_ack_needed != -1) {
+					// TODO: Need to figure out why server isn't stopping
+					// once the client receives all packets. is the final
+					// EOF packet getting lost? Is last_ack_needed not
+					// getting modified?
+				}
+				if (client_response[0] == last_ack_needed) {
+>>>>>>> 7963bb1697fa63800d44e8c0669186da819b0f8c
 					// we have received confirmation that the last packet has been
 					// written to file, so lets close up shop
 					printf("Received confirmation that the last packet has been written\n");
@@ -140,13 +157,14 @@ int main(int argc, char** argv) {
 					} else {
 						break;
 					}
-					
+
 				}
 
 				if (recvfrom(sockfd, client_response, PACKET_SIZE, 0, (struct sockaddr*)&clientaddr, &len) < 0) {
 					// We did not receive any data from the client...
 					// either they disconnected or a packet was lost. If we have any more
 					// data to send, lets resend the first packet in our window
+<<<<<<< HEAD
 					timeout_counter++;
 					printf("Timeout: %d\n", timeout_counter);
 					if (timeout_counter >= TIMEOUT_MAX_ATTEMPTS) {
@@ -156,6 +174,10 @@ int main(int argc, char** argv) {
 					}
 
 
+=======
+
+					printf("Did not receive data from the client\n");
+>>>>>>> 7963bb1697fa63800d44e8c0669186da819b0f8c
 					int ftell_before_seek = ftell(in);
 
 					int packet_difference = pack_ID - current_ack_needed;
@@ -171,10 +193,10 @@ int main(int argc, char** argv) {
 
 					// TODO: Can we somehow change current_ack_needed to the last packet that we sent
 					// BEFORE the resending of the first packet
-					
+
 					int temp_pack_ID = pack_ID;
 					pack_ID = current_ack_needed;
-					
+
 					//current_packet = 0;
 					//for (; current_packet < WINDOW_SIZE; current_packet++) {
 						if (sendNextPacket(read_buffer, in, &pack_ID, file_length, sockfd, clientaddr, len) == 1) {
@@ -253,9 +275,9 @@ int main(int argc, char** argv) {
 
 int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_length, int sockfd, struct sockaddr_in clientaddr, uint len) {
 	*(read_buffer) = (char)('A'+(*pack_ID)); // add the identifier to the beginning of the packet
+
 	// this identifier will be a char, starting at A, and ending at A + WINDOW_SIZE*2
 	// this will end up being, in the case of the window size being 5, A through J
-	
 	int diff = file_length - ftell(file_ptr); // amount of data we have left
 	int actual_packet_size = PACKET_SIZE;
 	//printf("%lu bytes in, %d bytes left\n", ftell(file_ptr), diff);
@@ -263,33 +285,48 @@ int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_le
 		// the file has no more data to send, so let the client
 		// know that we have no more packets to send. Let's use
 		// a constant string as a signal to close the connection
+<<<<<<< HEAD
 		*read_buffer = (char)('A'+(*pack_ID-1));
 		if (*read_buffer < 'A') {
 			*read_buffer = (char) ('A' + 2*WINDOW_SIZE - 1);
 		}
+=======
+		*(read_buffer) = (char)('A'+(*pack_ID-1));
+
+>>>>>>> 7963bb1697fa63800d44e8c0669186da819b0f8c
 		strcpy(read_buffer+1, END_OF_FILE);
 		sendto(sockfd, read_buffer, sizeof(END_OF_FILE)+1, 0, (struct sockaddr*)&clientaddr, len);
 		return 1;
 	}
+  // printf("%s\n", read_buffer);
 	if (diff <= PACKET_SIZE) {
 		fread(read_buffer+1, 1, diff, file_ptr);
+    // originally read_buffer + 1
 		// we have less than PACKET_SIZE bytes left in the file, so only
 		// read 'diff' number of bytes of the file into the read_buffer.
-		// 
+		//
 		// this will seek to the end of the file
 		actual_packet_size = diff;
 	} else {
+<<<<<<< HEAD
 		fread(read_buffer+1, 1, PACKET_SIZE, file_ptr);
 		// read PACKET_SIZE bytes of the file into the read_buffer
 
 	}
 	
 	printf("Sending packet ID -> %d(%d bytes)\n", *pack_ID, actual_packet_size);
+=======
+    // originally read_buffer + 1
+
+	}
+
+	printf("%s -> %d, %d\n", "packet ID: ", *pack_ID, actual_packet_size);
+>>>>>>> 7963bb1697fa63800d44e8c0669186da819b0f8c
 
 	*pack_ID = (*pack_ID) + 1;
 	if (*pack_ID >= 2 * WINDOW_SIZE)
 		*pack_ID = 0;
-	
+
 	if (sendto(sockfd, read_buffer, actual_packet_size + HEADER_SIZE, 0, (struct sockaddr*)&clientaddr, len) < 0) {
 		printf("sendto failed\n");
 		return 2;

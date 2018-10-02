@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     getchar();
     */
     int port = 9999;
-    char ip_address[20] = "10.0.0.2";
+    char ip_address[20] = "127.0.0.1";
 
 
     struct sockaddr_in serveraddr;
@@ -100,8 +100,12 @@ int main(int argc, char** argv) {
     int stored_packet_data_len = PACKET_SIZE * 2 * WINDOW_SIZE;
 
     char *stored_packet_data = (char*) malloc(stored_packet_data_len * sizeof(char));
+<<<<<<< HEAD
     int stored_packet_data_sizes[2*WINDOW_SIZE];
     
+=======
+
+>>>>>>> 7963bb1697fa63800d44e8c0669186da819b0f8c
     memset(stored_packet_data, 0, PACKET_SIZE * 2 * WINDOW_SIZE);
     memset(stored_packet_data_sizes, 0, 2 * WINDOW_SIZE);
     int packet_length;
@@ -186,17 +190,19 @@ int main(int argc, char** argv) {
                 memset(stored_packet_data + ((last_ack-'A') * PACKET_SIZE), 0, PACKET_SIZE);
                 // send acknowledgement (need to do error checking before this)
                 sendto(sockfd, buffer, HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, len); // send the first byte of the buffer
-                
+
                 // write to the file
                 fwrite(buffer+HEADER_SIZE, 1, packet_length - 1, file_out);
                 //printf("data: %s\n", buffer + HEADER_SIZE);
 
+<<<<<<< HEAD
                 if (*buffer == final_packet && final_packet != -1) {
                     // this is the last packet, so let's break out
+=======
+>>>>>>> 7963bb1697fa63800d44e8c0669186da819b0f8c
                     break;
                 }
 
-            } else if   (((*buffer > 'A'+window_min) && (*buffer <= 'A'+window_max)) || 
                         ((window_min > window_max) && ((*buffer <= 'A' + window_max) || *buffer > 'A' + window_min))) {
                 // either our window is in the middle of the window range, and our packet is inside it
                 // or our window overlaps back to the beginning (7,8,9,0,1) and our packet is inside it.
@@ -219,7 +225,7 @@ int main(int argc, char** argv) {
             }
         }
     }
-    
+
     close(sockfd);
     free(stored_packet_data);
 }
