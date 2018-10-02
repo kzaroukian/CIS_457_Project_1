@@ -215,9 +215,9 @@ int main(int argc, char** argv) {
 	}
 }
 
-int checksumCalculated(char* buffer, size_t len) {
-  size_t i;
-  size_t sum;
+uint16_t checksumCalculated(char* buffer, size_t len) {
+  uint16_t i;
+  uint16_t sum;
 
   for(i = 1; i < len; i++) {
     sum += (unsigned int) buffer[i];
@@ -240,8 +240,7 @@ int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_le
 
   // fits checksum into 2 bytes
   // puts first 8 bits of checksum in 2nd byte of packet
-  int answer = abs(checksumCalculated(read_buffer, len));
-  int checksumPartition = sqrt(answer);
+  uint16_t answer = checksumCalculated(read_buffer, len);
   printf("Checksum: %d\n", answer);
   printf("Checksum char: %c\n", (char) answer);
   printf("Checksum pt 1: %d\n", (answer >> 8));
@@ -261,14 +260,7 @@ int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_le
 		// know that we have no more packets to send. Let's use
 		// a constant string as a signal to close the connection
 		*(read_buffer) = (char)('A'+(*pack_ID-1));
-    *(read_buffer + 1) = (char)(checksumPartition);
-    //*(read_buffer + 2) = (char)(checksumPartition + 1);
-    // puts second 8 bytes of checksum in 3rd bit of packet
-    if (checksumPartition %2 != 0) {
-      *(read_buffer + 2) = (char)(checksumPartition + 1);
-    } else {
-      *(read_buffer + 2) = (char)(checksumPartition);
-    }
+
 		strcpy(read_buffer+1, END_OF_FILE);
 		sendto(sockfd, read_buffer, sizeof(END_OF_FILE)+1, 0, (struct sockaddr*)&clientaddr, len);
 		return 1;

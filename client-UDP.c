@@ -7,12 +7,12 @@
 #include <stdlib.h>
 #include <math.h>
 
-int checksumCalculated(char* buffer, size_t len) {
-  size_t i;
-  size_t sum = 0;
+uint16_t checksumCalculated(char* buffer, size_t len) {
+  uint16_t i;
+  uint16_t sum = 0;
 
   // gets approx checksum from server
-  unsigned int val = (buffer[1] << 8) | (buffer[2] & 0xFF);
+  uint16_t val = (buffer[1] << 8) | (buffer[2] & 0xFF);
   printf("Val: %d\n", val);
   printf("Val Char: %c\n", (char)val);
 
@@ -199,12 +199,13 @@ int main(int argc, char** argv) {
                 // we have received the next packet
                 printf("Received the next packet: %d\n", *buffer - 'A');
                 // get the checksum for this packet
+                // uint16_t checksumAnswer = checksumCalculated(buffer, len);
                 uint16_t checksumAnswer = checksumCalculated(buffer, len);
                 printf("Checksum: %d\n", checksumAnswer);
-                // if (checksumAnswer > 60000) {
-                //   // packet is not corrupted
-                //   // send acknowledgement
-                // } // else request that the packet is resent
+                if (checksumAnswer == 65536) {
+                  // packet is not corrupted
+                  // send acknowledgement
+                } // else request that the packet is resent
 
                 last_ack = *buffer; // set our last acknowledgement to this packet
                 // send acknowledgement (need to do error checking before this)
