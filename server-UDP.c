@@ -1,3 +1,11 @@
+/*
+ *	@authors: 	Elijah Anderson & Kaylin Zaroukian
+ *	@date:		1 October 2018
+ *	@course:	GVSU CIS 457 Data Communications
+ *	@project:	Project 1 - UDP File Server
+ *	@file:		server-UDP.c
+ */
+
 #include <sys/socket.h>
 #include <netinet/in.h> 
 #include <arpa/inet.h>

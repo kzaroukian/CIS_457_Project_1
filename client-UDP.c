@@ -1,3 +1,11 @@
+/*
+ *	@authors: 	Elijah Anderson & Kaylin Zaroukian
+ *	@date:		1 October 2018
+ *	@course:	GVSU CIS 457 Data Communications
+ *	@project:	Project 1 - UDP File Server
+ *	@file:		client-UDP.c
+ */
+
 #include <sys/socket.h>
 #include <netinet/in.h> 
 #include <arpa/inet.h>
@@ -89,7 +97,6 @@ int main(int argc, char** argv) {
             printf("Filename packet was lost, resending...\n");
             sendto(sockfd, file_name, strlen(file_name)+1, 0, (struct sockaddr*)&serveraddr, len);
         } else {
-            printf("asldkfj: %d\n", file_name_received[0]);
             if (file_name_received[0] == 0) {
                 printf("File not found on server\n");
                 return 1;
@@ -137,7 +144,7 @@ int main(int argc, char** argv) {
                     memset(stored_packet_data + packet_index, 0, PACKET_SIZE);
                     sendto(sockfd, &last_ack, HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, len);
                     stored_packet_data_sizes[last_ack-'A'] = 0;
-                    if (final_packet != -1 && (last_ack - 'A' == packet_index / PACKET_SIZE)) {
+                    if (final_packet != -1 && (final_packet - 'A' == packet_index / PACKET_SIZE)) {
                         // we have just written the last packet to file and sent the ack
                         printf("Received and ack'ed all packets\n");
                         close(sockfd);
