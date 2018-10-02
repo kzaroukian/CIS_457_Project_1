@@ -218,8 +218,8 @@ int main(int argc, char** argv) {
 int checksumCalculated(char* buffer, size_t len) {
   size_t i;
   size_t sum;
+
   for(i = 0; i < len; i++) {
-    //sum += (int) buffer[i];
     sum += (unsigned int) buffer[i];
     // decides when to wrap
     if (sum & 0xFFFF0000) {
@@ -228,16 +228,27 @@ int checksumCalculated(char* buffer, size_t len) {
     }
   }
   // makes sure checksum is only 16 bytes
-  //uint16_t finalSum = (uint16_t) sum;
-//  printf("Checksum prior to: %zu\n", sum);
   // gets 1s compliment
   return ~(sum & 0xFFFF);
 }
 
 int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_length, int sockfd, struct sockaddr_in clientaddr, uint len) {
 	*(read_buffer) = (char)('A'+(*pack_ID)); // add the identifier to the beginning of the packet
+
 	// this identifier will be a char, starting at A, and ending at A + WINDOW_SIZE*2
 	// this will end up being, in the case of the window size being 5, A through J
+
+  // fits checksum into 2 bits
+  // puts first 8 bytes of checksum in 2nd bit of packet
+  int answer = abs(checksumCalculated(read_buffer, len));
+  int checksumPartition = sqrt(answer);
+  *(read_buffer + 1) = (char)(checksumPartition);
+  // puts second 8 bytes of checksum in 3rd bit of packet
+  if (checksumPartition %2 != 0) {
+    *(read_buffer + 2) = (char)(checksumPartition + 1);
+  } else {
+    *(read_buffer + 2) = (char)(checksumPartition);
+  }
 
 	int diff = file_length - ftell(file_ptr); // amount of data we have left
 	int actual_packet_size = PACKET_SIZE;
@@ -247,44 +258,30 @@ int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_le
 		// know that we have no more packets to send. Let's use
 		// a constant string as a signal to close the connection
 		*(read_buffer) = (char)('A'+(*pack_ID-1));
+    *(read_buffer + 1) = (char)(checksumPartition);
+    //*(read_buffer + 2) = (char)(checksumPartition + 1);
+    // puts second 8 bytes of checksum in 3rd bit of packet
+    if (checksumPartition %2 != 0) {
+      *(read_buffer + 2) = (char)(checksumPartition + 1);
+    } else {
+      *(read_buffer + 2) = (char)(checksumPartition);
+    }
 		strcpy(read_buffer+1, END_OF_FILE);
 		sendto(sockfd, read_buffer, sizeof(END_OF_FILE)+1, 0, (struct sockaddr*)&clientaddr, len);
 		return 1;
 	}
-
-  // add checksum to the packet
-  // fits checksum into 2 bytes
-  // puts first 8 bytes of checksum in 2nd bit of packet
-  int answer = abs(checksumCalculated(read_buffer, len));
-  printf("Checksum: %d\n",answer);
-  int checksumPartition = sqrt(answer);
-  *(read_buffer + 1) = (char)(checksumPartition);
-  *(read_buffer + 2) = (char)(checksumPartition + 1);
-  printf("Checksum Bit 1: %d\n",checksumPartition);
-  printf("Checksum Bit 2: %d\n",checksumPartition + 1);
-  printf("Char 1: %c\n",(char)checksumPartition);
-  printf("Char 2: %c\n",(char)(checksumPartition +1));
-  printf("\n");
-  printf("%s\n", read_buffer);
-
-
-
-  // puts second 8 bytes of checksum in 3rd bit of packet
-  if (checksumPartition %2 != 0) {
-    *(read_buffer + 2) = (char)(checksumPartition + 1);
-  } else {
-    *(read_buffer + 2) = (char)(checksumPartition);
-  }
   // printf("%s\n", read_buffer);
 	if (diff <= PACKET_SIZE) {
-		fread(read_buffer+1, 1, diff, file_ptr);
+    // originally read_buffer + 1
+		fread(read_buffer+HEADER_SIZE, 1, diff, file_ptr);
 		// we have less than PACKET_SIZE bytes left in the file, so only
 		// read 'diff' number of bytes of the file into the read_buffer.
 		//
 		// this will seek to the end of the file
 		actual_packet_size = diff;
 	} else {
-		fread(read_buffer+1, sizeof(char), PACKET_SIZE, file_ptr);
+    // originally read_buffer + 1
+		fread(read_buffer+HEADER_SIZE, sizeof(char), PACKET_SIZE, file_ptr);
 		// read PACKET_SIZE bytes of the file into the read_buffer
 
 	}

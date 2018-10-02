@@ -7,29 +7,55 @@
 #include <stdlib.h>
 #include <math.h>
 
-// gets checksum on the client  side
-size_t checksumCalculated(char* buffer, size_t len) {
+// // gets checksum on the client  side
+// int checksumCalculated(char* buffer, size_t len) {
+//   size_t i;
+//   size_t sum = 0;
+//   // checksum from server
+//   printf("%s\n", buffer);
+//   int val = ((int)(buffer[1] * buffer[2]));
+//   printf("Position 2: %c\n", buffer[2]);
+//   printf("Position 2 Int: %c\n", (int)buffer[2]);
+//
+//   printf("Position 3: %c\n", buffer[1]);
+//   printf("Position 3 Int: %c\n", (int)buffer[1]);
+//
+//
+//   printf("VAL %d\n", val);
+//   //sum += buffer[2]
+//   for(i = 0; i < len; i++) {
+//     //printf("sum vals for adding: %c\n", buffer[i]);
+//     // may be better to write as *(buffer + i)
+//
+//     if (i == 1) {
+//       // do nothing
+//     } else if (i == 2) {
+//       sum += val;
+//     } else {
+//       sum += (unsigned int) buffer[i];
+//     }
+//     // decides when to wrap
+//     if (sum & 0xFFFF0000) {
+//       sum &= 0xFFFF;
+//       sum++;
+//     }
+//   }
+//   //uint16_t finalSum = (uint16_t) sum;
+//   // gets 1s compliment and makes sure checksum is 16 bytes
+//   return ~(sum & 0xFFFF);
+// }
+
+int checksumCalculated(char* buffer, size_t len) {
   size_t i;
   size_t sum = 0;
-  // checksum from server
-  printf("%s\n", buffer);
-  int val = ((int)(buffer[2] * buffer[3]));
-  printf("Position 2: %c\n", buffer[2]);
-  printf("Position 2 Int: %c\n", (int)buffer[2]);
 
-  printf("Position 3: %c\n", buffer[3]);
-  printf("Position 3 Int: %c\n", (int)buffer[3]);
-
-
-  printf("VAL %d\n", val);
-  //sum += buffer[2]
+  // gets approx checksum from server
+  int val = ((int)(buffer[1] * buffer[2]));
   for(i = 0; i < len; i++) {
-    //printf("sum vals for adding: %c\n", buffer[i]);
-    // may be better to write as *(buffer + i)
-
-    if (i == 2) {
+    if (i == 1) {
       // do nothing
-    } else if (i == 3) {
+    } else if (i == 2) {
+      // adds checksu
       sum += val;
     } else {
       sum += (unsigned int) buffer[i];
@@ -40,8 +66,6 @@ size_t checksumCalculated(char* buffer, size_t len) {
       sum++;
     }
   }
-  //uint16_t finalSum = (uint16_t) sum;
-  // gets 1s compliment and makes sure checksum is 16 bytes
   return ~(sum & 0xFFFF);
 }
 
@@ -174,6 +198,7 @@ int main(int argc, char** argv) {
         }
 
         packet_length = recvfrom(sockfd, buffer, PACKET_SIZE + HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, &len);
+        printf("%s\n", buffer);
         if (packet_length < 0) {
             printf("Error while retrieving packet\n");
             continue;
@@ -209,10 +234,11 @@ int main(int argc, char** argv) {
                 // we have received the next packet
                 printf("Received the next packet: %d\n", *buffer - 'A');
                 uint16_t checksumAnswer = checksumCalculated(buffer, len);
-                  printf("Checksum is %d\n", checksumAnswer);
-                if (checksumAnswer <= 0) {
-                  printf("Checksum is %d\n", checksumAnswer);
-                }
+                if (checksumAnswer == 0) {
+                  // packet is not corrupted
+                  // send acknowledgement
+                } // else request that the packet is resent
+
                 last_ack = *buffer; // set our last acknowledgement to this packet
                 // send acknowledgement (need to do error checking before this)
                 sendto(sockfd, buffer, HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, len); // send the first byte of the buffer
