@@ -11,20 +11,21 @@ int WINDOW_SIZE = 5; // we can handle 5 packets at a time
 int HEADER_SIZE = 1; // need 3 bytes for identifying packets
 int PACKET_SIZE = 1024; // we can send a max of 1024 bytes (excluding headers)
 char END_OF_FILE[4] = "EOF\0";
+int TIMEOUT_MAX_ATTEMPTS = 10;
 int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_length, int sockfd, struct sockaddr_in clientaddr, uint len);
 void addChecksum(char* buffer);
 int main(int argc, char** argv) {
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if(sockfd < 0) {
-		printf("There was an ERROR(1) creating the socket\n");
+		printf("Failed to create the socket\n");
 		return 1;
 	}
 
 	int portNum;
 
 	struct timeval timeout;
-	timeout.tv_sec = 0;
-	timeout.tv_usec = 250000;
+	timeout.tv_sec = 3;
+	timeout.tv_usec = 0;
 
 	setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
@@ -42,7 +43,7 @@ int main(int argc, char** argv) {
 
 	int b = bind(sockfd, (struct sockaddr*)&serveraddr, sizeof(serveraddr)); //associates address with socket 
 	if(b < 0){
-		printf("There was an ERROR(2) binding failed\n");
+		printf("Binding failed\n");
 		return 2;
 	}
 
@@ -54,16 +55,17 @@ int main(int argc, char** argv) {
 		int n = recvfrom(sockfd, client_response, PACKET_SIZE, 0, (struct sockaddr*)&clientaddr, &len);
 
 		if(n < 0)
-			printf("Time out on recieve.\n"); 
+			printf("Waiting...\n");
 		else {
-			printf("Got from client: %s\n", client_response);
+			printf("Filename received: %s\n", client_response);
 			sendto(sockfd, client_response, n, 0, (struct sockaddr*)&clientaddr, len);
 			FILE * in = fopen (client_response, "r");
 			if (in == NULL) {
-				char error_line[] = "Error: File not found";
-				printf("%s\n", error_line);
-				sendto(sockfd, (char)('A'-1)+error_line, strlen(error_line)+1, 0, (struct sockaddr*)&clientaddr, len);
-				// use what is essentially a -1 byte at the beginning to denote an error
+				printf("Error: File <%s> not found\n", client_response);
+				memset(client_response, 0, 1);
+				printf("----> %d\n", client_response[0]);
+				sendto(sockfd, client_response, 1, 0, (struct sockaddr*)&clientaddr, len);
+				// send a NULL byte to denote an error occurred
 				continue;
 			}
 			fseek(in, 0L, SEEK_END);
@@ -76,28 +78,45 @@ int main(int argc, char** argv) {
 			int current_ack_needed = 0;
 			int last_ack_needed = -1;
 
+			int timeout_counter = 0; // holds the number of times our packet has failed to send
+
+			timeout.tv_sec = 0;
+			timeout.tv_usec = 250000;
+			setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
 			printf("Sending first 5 packets\n");
 			for (; current_packet < WINDOW_SIZE; current_packet++) {
-				sendNextPacket(read_buffer, in, &pack_ID, file_length, sockfd, clientaddr, len);
+				if (sendNextPacket(read_buffer, in, &pack_ID, file_length, sockfd, clientaddr, len) == 1) {
+					last_ack_needed = pack_ID-1;
+					if (last_ack_needed < 0) {
+						last_ack_needed = last_ack_needed + (2 * WINDOW_SIZE);
+					}
+					printf("Sent the EOF packet: %d\n", last_ack_needed);
+					break;
+				}
 			}
 
 
 			while (1) {
-				int window_min = (current_ack_needed - 'A' + 1) % (2*WINDOW_SIZE);
-            	int window_max = (window_min+WINDOW_SIZE-1) % (2*WINDOW_SIZE);
-				
-				if (last_ack_needed != -1) {
-					// TODO: Need to figure out why server isn't stopping
-					// once the client receives all packets. is the final
-					// EOF packet getting lost? Is last_ack_needed not
-					// getting modified?
-				}
-				if (client_response[0] == last_ack_needed) {
+				int window_min = (current_ack_needed + 1) % (2*WINDOW_SIZE);
+            	int window_max = ((window_min + WINDOW_SIZE) - 1) % (2*WINDOW_SIZE);
+
+            	int i = 0;
+            	for (; i < strlen(acks); i++) {
+            		if (((i < window_min || i > window_max) && window_min < window_max) ||
+            			((i < window_min && i > window_max) && window_min > window_max)) {
+
+            			// if i is NOT in our window
+            			acks[i] = '0';
+            		}
+            	}
+
+				if ((client_response[0] == 'A'+last_ack_needed && strcmp(client_response+1, END_OF_FILE) == 0)
+					|| (last_ack_needed >= 0 && acks[last_ack_needed] == '1')) {
 					// we have received confirmation that the last packet has been
 					// written to file, so lets close up shop
 					printf("Received confirmation that the last packet has been written\n");
-					return 0;
+					break;
 				}
 				printf("current ack needed: %d\n", current_ack_needed);
 				while (1) {
@@ -105,13 +124,19 @@ int main(int argc, char** argv) {
 						// already have the ack that we need
 						acks[current_ack_needed] = '0';
 						printf("Already have the needed ack in storage: %d\n", current_ack_needed);
-						
+
 						current_ack_needed++;
 						if (current_ack_needed >= sizeof(acks)) {
 							current_ack_needed = 0;
 						}
 
-						sendNextPacket(read_buffer, in, &pack_ID, file_length, sockfd, clientaddr, len);
+						if (sendNextPacket(read_buffer, in, &pack_ID, file_length, sockfd, clientaddr, len) == 1) {
+							last_ack_needed = pack_ID-1;
+							if (last_ack_needed < 0) {
+								last_ack_needed = last_ack_needed + (2 * WINDOW_SIZE);
+							}
+							printf("Sent the EOF packet: %d\n", last_ack_needed);
+						}
 					} else {
 						break;
 					}
@@ -122,16 +147,22 @@ int main(int argc, char** argv) {
 					// We did not receive any data from the client...
 					// either they disconnected or a packet was lost. If we have any more
 					// data to send, lets resend the first packet in our window
-					
-					printf("Did not receive data from the client\n");
+					timeout_counter++;
+					printf("Timeout: %d\n", timeout_counter);
+					if (timeout_counter >= TIMEOUT_MAX_ATTEMPTS) {
+						timeout_counter = 0;
+						printf("Client disconnected...\n");
+						break;
+					}
+
+
 					int ftell_before_seek = ftell(in);
 
 					int packet_difference = pack_ID - current_ack_needed;
 					if (packet_difference < 0) {
 						packet_difference += 2*WINDOW_SIZE;
 					}
-					//printf("Packet we want to go to: %d at byte %d\n", current_ack_needed, packet_difference);
-					printf("ftell: %lu\n", ftell(in));
+
 					if (ftell(in) >= file_length) {
 						fseek(in, (-PACKET_SIZE*(packet_difference-1)) - (ftell(in) % PACKET_SIZE), SEEK_CUR);
 					} else {
@@ -159,9 +190,8 @@ int main(int argc, char** argv) {
 					fseek(in, ftell_before_seek, SEEK_SET);
 					// this resets the file pointer back to where we were before we rewound
 
-					//memset(acks, '0', sizeof(acks));
-
 				} else {
+					timeout_counter = 0;
 					printf("ack received: %d\n", client_response[0] - 'A');
 					if (client_response[0] < 'A' || client_response[0] > 'A' + (2*WINDOW_SIZE)) {
 						printf("We have received a garbled identifier: %d\n", client_response[0] - 'A');
@@ -198,9 +228,10 @@ int main(int argc, char** argv) {
 						}
 
 					} else {
-						if (client_response[0] >= current_ack_needed + WINDOW_SIZE ||
-							window_max < window_min && client_response[0] <= 'A' + window_max) {
-							// this ack is in our window range, but we it is not the next
+						printf("Min: %d  Max: %d\n", window_min, window_max);
+						if (((client_response[0] - 'A' > window_min && client_response[0] - 'A' <= window_max) && window_min < window_max) ||
+							((client_response[0] - 'A' > window_min || client_response[0] - 'A' <= window_max) && window_min > window_max)) {
+							// this ack is in our window range, but it is not the next
 							// one we need, so lets store it for later
 							printf("Storing ack: %d\n", client_response[0]-'A');
 							acks[client_response[0]-'A'] = '1';
@@ -210,6 +241,12 @@ int main(int argc, char** argv) {
 					}
 				}
 			}
+			memset(acks, '0', strlen(acks));
+			// make sure to reset our stored acks once we are finished with this client
+			timeout.tv_sec = 3;
+			timeout.tv_usec = 0;
+			setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+			// lets reset our rate back to one check every 3 seconds
 		}
 	}
 }
@@ -221,12 +258,15 @@ int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_le
 	
 	int diff = file_length - ftell(file_ptr); // amount of data we have left
 	int actual_packet_size = PACKET_SIZE;
-	printf("%lu bytes in, %d bytes left\n", ftell(file_ptr), diff);
+	//printf("%lu bytes in, %d bytes left\n", ftell(file_ptr), diff);
 	if (diff == 0) {
 		// the file has no more data to send, so let the client
 		// know that we have no more packets to send. Let's use
 		// a constant string as a signal to close the connection
-		*(read_buffer) = (char)('A'+(*pack_ID-1));
+		*read_buffer = (char)('A'+(*pack_ID-1));
+		if (*read_buffer < 'A') {
+			*read_buffer = (char) ('A' + 2*WINDOW_SIZE - 1);
+		}
 		strcpy(read_buffer+1, END_OF_FILE);
 		sendto(sockfd, read_buffer, sizeof(END_OF_FILE)+1, 0, (struct sockaddr*)&clientaddr, len);
 		return 1;
@@ -239,12 +279,12 @@ int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_le
 		// this will seek to the end of the file
 		actual_packet_size = diff;
 	} else {
-		fread(read_buffer+1, sizeof(char), PACKET_SIZE, file_ptr);
+		fread(read_buffer+1, 1, PACKET_SIZE, file_ptr);
 		// read PACKET_SIZE bytes of the file into the read_buffer
 
 	}
 	
-	printf("%s -> %d, %d\n", "packet ID: ", *pack_ID, actual_packet_size);
+	printf("Sending packet ID -> %d(%d bytes)\n", *pack_ID, actual_packet_size);
 
 	*pack_ID = (*pack_ID) + 1;
 	if (*pack_ID >= 2 * WINDOW_SIZE)

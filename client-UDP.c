@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
     }
 
     struct timeval timeout;
-    timeout.tv_sec = 3;
+    timeout.tv_sec = 1;
     timeout.tv_usec = 0;
 
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
@@ -73,9 +73,6 @@ int main(int argc, char** argv) {
         *newline = '\0';
     }
 
-    // create our output file
-    FILE *file_out = fopen(file_write_name, "w");
-
     sendto(sockfd, file_name, strlen(file_name)+1, 0, (struct sockaddr*)&serveraddr, len);
     char file_name_received[PACKET_SIZE];
     while (1) {
@@ -83,9 +80,16 @@ int main(int argc, char** argv) {
             printf("Filename packet was lost, resending...\n");
             sendto(sockfd, file_name, strlen(file_name)+1, 0, (struct sockaddr*)&serveraddr, len);
         } else {
+            if (file_name_received[0] == 0) {
+                printf("File not found on server\n");
+                return 1;
+            }
             break;
         }
     }
+
+    // create our output file
+    FILE *file_out = fopen(file_write_name, "w");
 
     timeout.tv_sec = 0;
     timeout.tv_usec = 100000;
@@ -96,32 +100,40 @@ int main(int argc, char** argv) {
     int stored_packet_data_len = PACKET_SIZE * 2 * WINDOW_SIZE;
 
     char *stored_packet_data = (char*) malloc(stored_packet_data_len * sizeof(char));
+    int stored_packet_data_sizes[2*WINDOW_SIZE];
     
     memset(stored_packet_data, 0, PACKET_SIZE * 2 * WINDOW_SIZE);
+    memset(stored_packet_data_sizes, 0, 2 * WINDOW_SIZE);
     int packet_length;
+    int final_packet = -1;
     while (1) {
         // before we receive any data, check if we already have the next packet we need
         // stored into memory. If so, lets write it to the file and send the ack
-        int packet_index = PACKET_SIZE * ((last_ack-'A')+1);
+        int packet_index = (PACKET_SIZE * ((last_ack-'A')+1)) % stored_packet_data_len;
+
         if (*(stored_packet_data + packet_index) != 0) {
             while (1) {
                 if (*(stored_packet_data + packet_index) != 0) {
-                    printf("Writing stored packet data: %d at %d\n", (last_ack-'A')+1, packet_index);
-                    // write to the file
-                    int size = strlen(stored_packet_data + packet_index);
-                    // if we have 2 concurrent packets, strlen will return the length of both
-                    // packet data, so lets cap it at a max of PACKET_SIZE bytes
-                    if (size > PACKET_SIZE) {
-                        size = PACKET_SIZE;
-                    }
                     last_ack ++;
-                    if (last_ack >= 'A' + (2*WINDOW_SIZE)-1) {
+                    if (last_ack >= 'A' + (2*WINDOW_SIZE)) {
                         last_ack = 'A';
                     }
-                    fwrite(stored_packet_data + packet_index, 1, size, file_out);
+                    printf("Writing stored packet data: %d at %d\n", (last_ack-'A'), packet_index);
+                    // write to the file
+
+                    fwrite(stored_packet_data + packet_index, 1, stored_packet_data_sizes[last_ack-'A'], file_out);
+                    printf("data size: %d\n", stored_packet_data_sizes[last_ack-'A']);
 
                     memset(stored_packet_data + packet_index, 0, PACKET_SIZE);
                     sendto(sockfd, &last_ack, HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, len);
+                    stored_packet_data_sizes[last_ack-'A'] = 0;
+                    if (final_packet != -1 && (last_ack - 'A' == packet_index / PACKET_SIZE)) {
+                        // we have just written the last packet to file and sent the ack
+                        printf("Received and ack'ed all packets\n");
+                        close(sockfd);
+                        free(stored_packet_data);
+                        return 0;
+                    }
 
                     packet_index = (packet_index + PACKET_SIZE) % stored_packet_data_len;
                     // we use modulo here in the case where we have 9 and 0 stored,
@@ -136,7 +148,7 @@ int main(int argc, char** argv) {
 
         packet_length = recvfrom(sockfd, buffer, PACKET_SIZE + HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, &len);
         if (packet_length < 0) {
-            printf("Error while retrieving packet\n");
+            printf("Waiting...\n");
             continue;
         } else {
             int window_min = (last_ack - 'A' + 1) % (2*WINDOW_SIZE);
@@ -146,14 +158,15 @@ int main(int argc, char** argv) {
 
             if (strcmp(buffer+1, END_OF_FILE) == 0) {
                 // we have received the signal that all packets have been sent
-                printf("Received the EOF signal\n");
+                printf("Received the EOF signal: %d\n", (*buffer) - 'A');
+                final_packet = *buffer;
                 if (*buffer == last_ack) {
                     // we have received and acknowledged all packets
                     printf("Received and ack'ed all packets\n");
                     break;
                 } else {
                     // TODO: Need to do something here???
-                    break;
+                    continue;
                 }
             }
             else if (*buffer < 'A' || (*buffer > 'A' + 2*WINDOW_SIZE+1)) {
@@ -170,18 +183,16 @@ int main(int argc, char** argv) {
                 // we have received the next packet
                 printf("Received the next packet: %d\n", *buffer - 'A');
                 last_ack = *buffer; // set our last acknowledgement to this packet
+                memset(stored_packet_data + ((last_ack-'A') * PACKET_SIZE), 0, PACKET_SIZE);
                 // send acknowledgement (need to do error checking before this)
                 sendto(sockfd, buffer, HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, len); // send the first byte of the buffer
                 
                 // write to the file
                 fwrite(buffer+HEADER_SIZE, 1, packet_length - 1, file_out);
+                //printf("data: %s\n", buffer + HEADER_SIZE);
 
-                if ((*buffer) == (char)('A'+(2*WINDOW_SIZE)+1)) {
-                    printf("Received all packets\n");
-                    // the header indicates this is the last packet
-                    // 
-                    // we really can't just break out, since we need to do some final error checking,
-                    // but we can do this temporarily
+                if (*buffer == final_packet && final_packet != -1) {
+                    // this is the last packet, so let's break out
                     break;
                 }
 
@@ -191,7 +202,9 @@ int main(int argc, char** argv) {
                 // or our window overlaps back to the beginning (7,8,9,0,1) and our packet is inside it.
                 // we have received a packet that we cannot ack yet
                 printf("Received a future packet: %d\n", *buffer - 'A');
-                memcpy((stored_packet_data+((*buffer-'A') * PACKET_SIZE)), buffer+HEADER_SIZE, strlen(buffer)-1);
+                memcpy((stored_packet_data+((*buffer-'A') * PACKET_SIZE)), buffer+HEADER_SIZE, packet_length);
+                stored_packet_data_sizes[*buffer - 'A'] = packet_length - 1;
+
                 printf("Storing packet data at entry: %d\n", (*buffer-'A') * PACKET_SIZE);
                 // this should copy the data from the buffer to the 'slot' of storage in the
                 // stored_packet_data string. Packet 'A' will be stored from 0->1023, 'B'
