@@ -219,7 +219,7 @@ int checksumCalculated(char* buffer, size_t len) {
   size_t i;
   size_t sum;
 
-  for(i = 0; i < len; i++) {
+  for(i = 1; i < len; i++) {
     sum += (unsigned int) buffer[i];
     // decides when to wrap
     if (sum & 0xFFFF0000) {
@@ -227,7 +227,7 @@ int checksumCalculated(char* buffer, size_t len) {
       sum++;
     }
   }
-  // makes sure checksum is only 16 bytes
+  // makes sure checksum is only 16 bits
   // gets 1s compliment
   return ~(sum & 0xFFFF);
 }
@@ -238,17 +238,20 @@ int sendNextPacket(char* read_buffer, FILE* file_ptr, int *pack_ID, long file_le
 	// this identifier will be a char, starting at A, and ending at A + WINDOW_SIZE*2
 	// this will end up being, in the case of the window size being 5, A through J
 
-  // fits checksum into 2 bits
-  // puts first 8 bytes of checksum in 2nd bit of packet
+  // fits checksum into 2 bytes
+  // puts first 8 bits of checksum in 2nd byte of packet
   int answer = abs(checksumCalculated(read_buffer, len));
   int checksumPartition = sqrt(answer);
-  *(read_buffer + 1) = (char)(checksumPartition);
-  // puts second 8 bytes of checksum in 3rd bit of packet
-  if (checksumPartition %2 != 0) {
-    *(read_buffer + 2) = (char)(checksumPartition + 1);
-  } else {
-    *(read_buffer + 2) = (char)(checksumPartition);
-  }
+  printf("Checksum: %d\n", answer);
+  printf("Checksum char: %c\n", (char) answer);
+  printf("Checksum pt 1: %d\n", (answer >> 8));
+  printf("Checksum pt 2: %d\n", (answer & 0xFF));
+  printf("Checksum pt 1: %c\n", (char)(answer >> 8));
+  printf("Checksum pt 2: %c\n", (char)(answer & 0xFF));
+
+  // *(read_buffer + 1) = (char)(checksumPartition);
+  *(read_buffer + 1) = (char)(answer >> 8);
+  *(read_buffer + 2) = (char)(answer & 0xFF);
 
 	int diff = file_length - ftell(file_ptr); // amount of data we have left
 	int actual_packet_size = PACKET_SIZE;

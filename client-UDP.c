@@ -12,17 +12,21 @@ int checksumCalculated(char* buffer, size_t len) {
   size_t sum = 0;
 
   // gets approx checksum from server
-  int val = ((int)(buffer[1] * buffer[2]));
-  for(i = 0; i < len; i++) {
+  unsigned int val = (buffer[1] << 8) | (buffer[2] & 0xFF);
+  printf("Val: %d\n", val);
+  printf("Val Char: %c\n", (char)val);
+
+  for(i = 1; i < len; i++) {
     if (i == 1) {
       // do nothing
     } else if (i == 2) {
-      // adds checksu
+      // adds checksu,
       sum += val;
     } else {
       sum += (unsigned int) buffer[i];
     }
     // decides when to wrap
+    // makes sure sum is always 16 bits
     if (sum & 0xFFFF0000) {
       sum &= 0xFFFF;
       sum++;
@@ -160,7 +164,6 @@ int main(int argc, char** argv) {
         }
 
         packet_length = recvfrom(sockfd, buffer, PACKET_SIZE + HEADER_SIZE, 0, (struct sockaddr*)&serveraddr, &len);
-        printf("%s\n", buffer);
         if (packet_length < 0) {
             printf("Error while retrieving packet\n");
             continue;
@@ -195,11 +198,13 @@ int main(int argc, char** argv) {
             } else if (*buffer == last_ack+1 || ((*buffer == 'A') && (last_ack == 'A'+(2*WINDOW_SIZE)-1))) {
                 // we have received the next packet
                 printf("Received the next packet: %d\n", *buffer - 'A');
+                // get the checksum for this packet
                 uint16_t checksumAnswer = checksumCalculated(buffer, len);
-                if (checksumAnswer == 0) {
-                  // packet is not corrupted
-                  // send acknowledgement
-                } // else request that the packet is resent
+                printf("Checksum: %d\n", checksumAnswer);
+                // if (checksumAnswer > 60000) {
+                //   // packet is not corrupted
+                //   // send acknowledgement
+                // } // else request that the packet is resent
 
                 last_ack = *buffer; // set our last acknowledgement to this packet
                 // send acknowledgement (need to do error checking before this)
