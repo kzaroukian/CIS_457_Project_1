@@ -7,44 +7,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-// // gets checksum on the client  side
-// int checksumCalculated(char* buffer, size_t len) {
-//   size_t i;
-//   size_t sum = 0;
-//   // checksum from server
-//   printf("%s\n", buffer);
-//   int val = ((int)(buffer[1] * buffer[2]));
-//   printf("Position 2: %c\n", buffer[2]);
-//   printf("Position 2 Int: %c\n", (int)buffer[2]);
-//
-//   printf("Position 3: %c\n", buffer[1]);
-//   printf("Position 3 Int: %c\n", (int)buffer[1]);
-//
-//
-//   printf("VAL %d\n", val);
-//   //sum += buffer[2]
-//   for(i = 0; i < len; i++) {
-//     //printf("sum vals for adding: %c\n", buffer[i]);
-//     // may be better to write as *(buffer + i)
-//
-//     if (i == 1) {
-//       // do nothing
-//     } else if (i == 2) {
-//       sum += val;
-//     } else {
-//       sum += (unsigned int) buffer[i];
-//     }
-//     // decides when to wrap
-//     if (sum & 0xFFFF0000) {
-//       sum &= 0xFFFF;
-//       sum++;
-//     }
-//   }
-//   //uint16_t finalSum = (uint16_t) sum;
-//   // gets 1s compliment and makes sure checksum is 16 bytes
-//   return ~(sum & 0xFFFF);
-// }
-
 int checksumCalculated(char* buffer, size_t len) {
   size_t i;
   size_t sum = 0;
