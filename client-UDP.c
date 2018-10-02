@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <math.h>
 
+// gets 16 bit checksum
 uint16_t checksumCalculated(char* buffer, size_t len) {
   uint16_t i;
   uint16_t sum = 0;
